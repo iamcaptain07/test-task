@@ -1,10 +1,12 @@
-import { getProfileCollection } from '@/lib/db';
+import connectDB from '@/lib/db';
+import Profile from '@/models/Profile';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    const profiles = await getProfileCollection();
-    let profile = await profiles.findOne({ id: 1 });
+    await connectDB();
+    
+    let profile = await Profile.findOne({ id: 1 }).lean();
 
     // Seed default profile if it doesn't exist (first run)
     if (!profile) {
@@ -15,12 +17,11 @@ export async function GET() {
         favoriteGenres: ['fiction', 'classic'],
         updatedAt: new Date().toISOString()
       };
-      await profiles.insertOne(defaultProfile);
+      await Profile.create(defaultProfile);
       profile = defaultProfile;
     }
 
-    // Remove MongoDB _id from response
-    const { _id, ...profileData } = profile;
+    const { _id, __v, ...profileData } = profile;
     return NextResponse.json(profileData);
   } catch (error) {
     console.error('Error fetching profile:', error);
@@ -33,6 +34,8 @@ export async function GET() {
 
 export async function PUT(request) {
   try {
+    await connectDB();
+    
     const body = await request.json();
     const { name, email, favoriteGenres } = body;
 
@@ -60,24 +63,18 @@ export async function PUT(request) {
       );
     }
 
-    const profiles = await getProfileCollection();
-    
-    const updateResult = await profiles.updateOne(
+    const updatedProfile = await Profile.findOneAndUpdate(
       { id: 1 },
       {
-        $set: {
-          name: name.trim(),
-          email: email.trim(),
-          favoriteGenres: Array.isArray(favoriteGenres) ? favoriteGenres : [],
-          updatedAt: new Date().toISOString()
-        }
+        name: name.trim(),
+        email: email.trim(),
+        favoriteGenres: Array.isArray(favoriteGenres) ? favoriteGenres : [],
+        updatedAt: new Date().toISOString()
       },
-      { upsert: true }
+      { upsert: true, new: true, lean: true }
     );
 
-    const updatedProfile = await profiles.findOne({ id: 1 });
-    const { _id, ...profileData } = updatedProfile;
-
+    const { _id, __v, ...profileData } = updatedProfile;
     return NextResponse.json(profileData);
   } catch (error) {
     console.error('Error updating profile:', error);
@@ -87,4 +84,3 @@ export async function PUT(request) {
     );
   }
 }
-
